@@ -21,7 +21,8 @@ This skill ensures that animation scripts are perfectly synchronized with "LOCKE
    - Synchronize these descriptions across adjacent scenes.
 
 5. **Isolation of Technical Fields:**
-   - Do **NOT** modify the content of `CAMERA`, `AUDIO`, or `VISUAL FX` fields unless they contain a character/BG name that must be synchronized. Otherwise, leave them as-is to preserve the user's technical intent.
+   - Do **NOT** modify the content of `CAMERA`, `AUDIO`, or `VISUAL FX` fields unless they contain a character/BG name that must be synchronized.
+   - **REMOVE** the `RENDERING RULES` section entirely from the script.
 
 ## Pipeline Check
 - [ ] Are all character names in IMAGE/ACTIONS matching LOCKED exactly?
