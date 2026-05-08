@@ -527,7 +527,7 @@ function CharactersTab({ project, characters, loadCharacters, outputPath }: Char
   const handleGenerateAllRefs = async () => {
     if (!characters.length) return;
     if (!confirm(`This will generate reference images for all ${characters.length} entities one by one. Continue?`)) return;
-    
+
     setIsAdding(true);
     for (const char of characters) {
       // Skip if it already has a media_id and we don't want to overwrite? 
@@ -793,11 +793,11 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
 
   const matchCharacters = (text: string) => {
     const lowerText = text.toLowerCase();
-    
+
     return characters
       .filter(c => {
         if (!c.media_id) return false;
-        
+
         // Strip common prefixes to get the core name
         const coreName = c.name
           .replace(/^Hero Prop\s*-\s*/i, '')
@@ -807,7 +807,7 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
           .toLowerCase();
 
         if (coreName.length < 3) return lowerText.includes(coreName);
-        
+
         // Match if core name appears in the text
         return lowerText.includes(coreName) || coreName.split(' ').every(word => lowerText.includes(word));
       })
@@ -825,27 +825,27 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
           <label className="px-3 py-1.5 rounded text-xs font-bold transition-all border border-white/10 hover:bg-white/5 cursor-pointer flex items-center gap-2">Import Script TXT<input type="file" accept=".txt" onChange={async (e) => {
             const file = e.target.files?.[0]; if (!file) return;
             const content = await file.text();
-            
+
             // 1. Extract STYLE and TONE (Strictly exclude RENDERING RULES)
-            const styleMatch = content.match(/STYLE:\s*([\s\S]*?)(?=\n?TONE:|\n?RENDERING RULES:|\n?CHARACTERS AND OBJECTS|$)/i);
+            const styleMatch = content.match(/STYLE:\s*([\s\S]*?)(?=\n?TONE:|\n?RENDERING RULES|\n?CHARACTERS AND OBJECTS|$)/i);
             const style = styleMatch ? styleMatch[1].trim() : "";
             
-            const toneMatch = content.match(/TONE:\s*([\s\S]*?)(?=\n?STYLE:|\n?RENDERING RULES:|\n?CHARACTERS AND OBJECTS|\n?SCENE|$)/i);
+            const toneMatch = content.match(/TONE:\s*([\s\S]*?)(?=\n?STYLE:|\n?RENDERING RULES|\n?CHARACTERS AND OBJECTS|\n?SCENE|$)/i);
             const tone = toneMatch ? toneMatch[1].trim() : "";
 
             // 2. Parse Scenes
             const scenes: any[] = [];
             const sceneRegex = /SCENE\s+(\d+):([\s\S]*?)(?=\nSCENE\s+\d+:|\n\[END|$)/g;
             let match;
-            
+
             while ((match = sceneRegex.exec(content)) !== null) {
               const sceneNum = match[1];
               const sceneBody = match[2];
 
-              const envMatch = sceneBody.match(/(?:^|\n)-?\s*ENVIRONMENT\s*\(SCENE\):\s*([\s\S]*?)(?=\n-?\s*IMAGE:|-?\s*IMAGE:|\n-?\s*ACTIONS:|-?\s*ACTIONS:|\n-?\s*CAMERA:|-?\s*CAMERA:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
-              const imgMatch = sceneBody.match(/(?:^|\n)-?\s*IMAGE:\s*([\s\S]*?)(?=\n-?\s*ACTIONS:|-?\s*ACTIONS:|\n-?\s*ENVIRONMENT:|-?\s*ENVIRONMENT:|\n-?\s*CAMERA:|-?\s*CAMERA:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
-              const actMatch = sceneBody.match(/(?:^|\n)-?\s*ACTIONS:\s*([\s\S]*?)(?=\n-?\s*IMAGE:|-?\s*IMAGE:|\n-?\s*ENVIRONMENT:|-?\s*ENVIRONMENT:|\n-?\s*CAMERA:|-?\s*CAMERA:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
-              const camMatch = sceneBody.match(/(?:^|\n)-?\s*CAMERA:\s*([\s\S]*?)(?=\n-?\s*ENVIRONMENT:|ENVIRONMENT:|\n-?\s*IMAGE:|IMAGE:|\n-?\s*ACTIONS:|ACTIONS:|\n-?\s*AUDIO:|AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|\n-?\s*VISUAL FX:|VISUAL FX:|$)/i);
+              const envMatch = sceneBody.match(/ENVIRONMENT\s*\(SCENE\):\s*([\s\S]*?)(?=\n-?\s*IMAGE:|-?\s*IMAGE:|\n-?\s*ACTIONS:|-?\s*ACTIONS:|\n-?\s*CAMERA:|-?\s*CAMERA:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
+              const imgMatch = sceneBody.match(/IMAGE:\s*([\s\S]*?)(?=\n-?\s*ACTIONS:|-?\s*ACTIONS:|\n-?\s*ENVIRONMENT:|-?\s*ENVIRONMENT:|\n-?\s*CAMERA:|-?\s*CAMERA:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
+              const actMatch = sceneBody.match(/ACTIONS:\s*([\s\S]*?)(?=\n-?\s*IMAGE:|-?\s*IMAGE:|\n-?\s*ENVIRONMENT:|-?\s*ENVIRONMENT:|\n-?\s*CAMERA:|-?\s*CAMERA:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
+              const camMatch = sceneBody.match(/CAMERA:\s*([\s\S]*?)(?=\n-?\s*ENVIRONMENT:|ENVIRONMENT:|\n-?\s*IMAGE:|IMAGE:|\n-?\s*ACTIONS:|ACTIONS:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
 
               const cleanText = (txt: string) => {
                 if (!txt) return "";
@@ -859,12 +859,18 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
               const env = envMatch ? cleanText(envMatch[1]) : "";
               const img = imgMatch ? cleanText(imgMatch[1]) : "";
               const act = actMatch ? cleanText(actMatch[1]) : "";
-              const camFull = camMatch ? cleanText(camMatch[1]) : "";
+              const camFull = camMatch ? camMatch[1].trim() : "";
               
-              // CAMERA: Only keep the Lens info, discard Movement, Framing, Focus
-              const lensMatch = camFull.match(/Lens:\s*([^\n,]+)/i);
-              const lens = lensMatch ? lensMatch[1].trim() : camFull.split('\n')[0].replace(/Lens:\s*/i, '').trim();
+              // CAMERA: Extract ONLY the Lens part
+              let lens = "";
+              const lensMatch = camFull.match(/Lens:\s*([^\n.]+)/i);
+              if (lensMatch) {
+                lens = lensMatch[1].trim();
+              } else {
+                lens = camFull.split('.')[0].replace(/Lens:\s*/i, '').replace(/^-\s*/, '').trim();
+              }
 
+              // Final Prompt Construction (NO ACTIONS, NO RENDERING RULES)
               const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE):\n${env}\nIMAGE:\n${img}\nCAMERA (Lens): ${lens}`;
               
               scenes.push({
