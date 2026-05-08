@@ -20,10 +20,8 @@ This skill ensures that animation scripts are perfectly synchronized with "LOCKE
    - Read the entire script to ensure `ENVIRONMENT` descriptions flow logically in terms of **Time** (Dawn -> Morning -> Midday -> etc.) and **Weather**.
    - Synchronize these descriptions across adjacent scenes.
 
-5. **Preservation of Technical & Operational Content:**
-   - **PRESERVE** the `RENDERING RULES` section exactly as it is in the script file. Do NOT delete it.
-   - **PRESERVE** the full `CAMERA` details (Movement, Framing, Focus) in the script file. Do NOT trim it to Lens only.
-   - **Standardization only applies to NAMES:** Only replace character names and BG tags with the LOCKED versions. Leave all other text untouched.
+5. **Isolation of Technical Fields:**
+   - Do **NOT** modify the content of `CAMERA`, `AUDIO`, or `VISUAL FX` fields unless they contain a character/BG name that must be synchronized. Otherwise, leave them as-is to preserve the user's technical intent.
 
 ## Pipeline Check
 - [ ] Are all character names in IMAGE/ACTIONS matching LOCKED exactly?
