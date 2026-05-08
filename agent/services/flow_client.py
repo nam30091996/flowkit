@@ -13,7 +13,7 @@ from typing import Optional
 
 from agent.config import (
     GOOGLE_FLOW_API, GOOGLE_API_KEY, ENDPOINTS,
-    VIDEO_MODELS, UPSCALE_MODELS, IMAGE_MODELS, VIDEO_POLL_TIMEOUT,
+    VIDEO_MODELS, UPSCALE_MODELS, IMAGE_MODELS, VIDEO_POLL_TIMEOUT, IMAGE_MODEL,
 )
 from agent.services.headers import random_headers
 
@@ -298,7 +298,7 @@ class FlowClient:
             "seed": ts % 1000000,
             "structuredPrompt": {"parts": [{"text": prompt}]},
             "imageAspectRatio": aspect_ratio,
-            "imageModelName": IMAGE_MODELS.get(self.config.get("IMAGE_MODEL", IMAGE_MODEL), IMAGE_MODELS["NANO_BANANA_2"]),
+            "imageModelName": IMAGE_MODELS.get(IMAGE_MODEL, IMAGE_MODELS["NANO_BANANA_2"]),
         }
 
         # Add character references if provided (edit_image flow)

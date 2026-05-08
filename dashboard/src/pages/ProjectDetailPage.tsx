@@ -175,7 +175,7 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
           if (resultUrl && mediaId && autoUpscale) {
             console.log(`[VIDEO] SUCCESS! Video generated for #${i + 1}. MediaID: ${mediaId}. Starting 1080p Upscale...`);
             setItems(prev => prev.map((p, idx) => idx === i ? { ...p, isUpscaling: true } : p));
-            
+
             // Step 2: Start Upscale to 1080p
             try {
               const upscaleRes = await fetchAPI<any>('/api/flow/upscale-video', {
@@ -187,10 +187,10 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
                   resolution: 'VIDEO_RESOLUTION_1080P'
                 })
               });
-              
+
               const uRoot = upscaleRes.data || upscaleRes.result || upscaleRes;
               const uOpName = uRoot.operations?.[0]?.operation?.name || uRoot.media?.[0]?.name || uRoot.name;
-              
+
               if (uOpName) {
                 const finalUpscaledUrl = await pollUpscaleStatus(i, uOpName);
                 if (finalUpscaledUrl) {
@@ -267,13 +267,13 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
         })
       });
       const root = genResult.data || genResult.result || genResult;
-      
+
       // Extract the actual operation name. 
       // In newer FX APIs, the 'media' name (UUID) is the pollable operation name, NOT the workflow name.
-      const opName = root.operations?.[0]?.operation?.name || 
-                     root.media?.[0]?.name || 
-                     root.workflows?.[0]?.metadata?.primaryMediaId ||
-                     root.workflows?.[0]?.name;
+      const opName = root.operations?.[0]?.operation?.name ||
+        root.media?.[0]?.name ||
+        root.workflows?.[0]?.metadata?.primaryMediaId ||
+        root.workflows?.[0]?.name;
 
       if (!opName) {
         console.error(`[VIDEO] No operation name found for #${i + 1}. Root:`, root);
@@ -401,30 +401,80 @@ function CharactersTab({ project, characters, loadCharacters, outputPath }: Char
     setIsAdding(true);
     try {
       const content = await file.text();
-      const data = JSON.parse(content);
 
-      for (const [name, info] of Object.entries(data)) {
-        // Store the raw JSON info as a string in image_prompt to "keep the format"
-        const jsonPrompt = JSON.stringify(info);
+      // 1. Check if it's a Script TXT or JSON
+      if (content.includes('LOCKED') || content.includes('STYLE:')) {
+        console.log('[IMPORT] Detected Script TXT format. Parsing...');
 
-        // Create character
-        const char = await fetchAPI<Character>('/api/characters', {
-          method: 'POST',
-          body: JSON.stringify({
-            name: name,
-            image_prompt: jsonPrompt,
-            entity_type: 'character'
-          })
-        });
+        // Extract STYLE
+        const styleMatch = content.match(/STYLE:\s*([\s\S]*?)(?=\nTONE:|\nRENDERING RULES:|\nCHARACTERS AND OBJECTS|$)/);
+        const style = styleMatch ? styleMatch[1].trim() : "";
 
-        // Link to project
-        await fetchAPI(`/api/projects/${project.id}/characters/${char.id}`, { method: 'POST' });
+        // Extract LOCKED section
+        const lockedSectionMatch = content.match(/CHARACTERS AND OBJECTS \(LOCKED\):([\s\S]*?)(?=\nENVIRONMENT|\n\[END|$)/);
+        if (!lockedSectionMatch) throw new Error("Could not find CHARACTERS AND OBJECTS (LOCKED) section");
+
+        const lines = lockedSectionMatch[1].split('\n').map(l => l.trim()).filter(l => l.startsWith('-'));
+        const newEntities: Character[] = [];
+        const batchRequests: any[] = [];
+
+        for (const line of lines) {
+          const match = line.match(/^-\s*([^:]+):\s*(.*)/);
+          if (!match) continue;
+
+          const name = match[1].trim();
+          const description = match[2].trim();
+
+          // Categorize entity type
+          let type: 'character' | 'location' | 'visual_asset' = 'character';
+          const nameLower = name.toLowerCase();
+          const descLower = description.toLowerCase();
+
+          if (name.includes('BG_') || descLower.includes('location') || nameLower.includes('forest') || nameLower.includes('kitchen') || nameLower.includes('garden') || nameLower.includes('veranda')) {
+            type = 'location';
+          } else if (nameLower.includes('prop') || descLower.includes('object') || nameLower.includes('set') || nameLower.includes('pot') || nameLower.includes('stamp') || nameLower.includes('journal')) {
+            type = 'visual_asset';
+          }
+
+          // Create the character/object
+          const char = await fetchAPI<Character>('/api/characters', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: name,
+              image_prompt: JSON.stringify({ STYLE: style, DESCRIPTION: description }),
+              entity_type: type
+            })
+          });
+
+          // Link to project
+          await fetchAPI(`/api/projects/${project.id}/characters/${char.id}`, { method: 'POST' });
+          newEntities.push(char);
+        }
+
+        alert(`Imported ${newEntities.length} entities from script.`);
+
+        // Refresh the list immediately
+        loadCharacters();
+      } else {
+        // Fallback to legacy JSON import
+        try {
+          const data = JSON.parse(content);
+          for (const [name, info] of Object.entries(data)) {
+            const char = await fetchAPI<Character>('/api/characters', {
+              method: 'POST',
+              body: JSON.stringify({ name: name, image_prompt: JSON.stringify(info), entity_type: 'character' })
+            });
+            await fetchAPI(`/api/projects/${project.id}/characters/${char.id}`, { method: 'POST' });
+          }
+          loadCharacters();
+        } catch (jsonErr) {
+          console.error('[IMPORT] JSON parse failed:', jsonErr);
+          throw new Error("Invalid format. Please use Ghibli Script TXT or JSON.");
+        }
       }
-
-      loadCharacters();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Import failed:', err);
-      alert('Failed to import characters. Ensure the file is valid JSON.');
+      alert(`Import failed: ${err.message || 'Unknown error'}`);
     } finally {
       setIsAdding(false);
       e.target.value = '';
@@ -459,31 +509,74 @@ function CharactersTab({ project, characters, loadCharacters, outputPath }: Char
     await loadCharacters()
   }
 
+  const handleClearAll = async () => {
+    if (!confirm('Are you sure you want to delete ALL characters/objects in this project? This cannot be undone.')) return;
+    setIsAdding(true);
+    try {
+      for (const char of characters) {
+        await fetchAPI(`/api/projects/${project.id}/characters/${char.id}`, { method: 'DELETE' });
+      }
+      loadCharacters();
+    } catch (err) {
+      console.error('Clear all failed:', err);
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleGenerateAllRefs = async () => {
+    if (!characters.length) return;
+    if (!confirm(`This will generate reference images for all ${characters.length} entities one by one. Continue?`)) return;
+    
+    setIsAdding(true);
+    for (const char of characters) {
+      // Skip if it already has a media_id and we don't want to overwrite? 
+      // Actually, user probably wants to generate all, so we call handleGenerate.
+      console.log(`[BATCH] Processing ${char.name}...`);
+      await handleGenerate(char);
+    }
+    setIsAdding(false);
+    alert('All reference images generated sequentially.');
+  };
+
   const handleGenerate = async (char: Character) => {
     if (generatingId) return
     setGeneratingId(char.id)
     try {
-      let enhancedPrompt = char.image_prompt || char.name
-      const turnaroundKeywords = "full body character turnaround sheet, front view, side view, back view, 3/4 view, neutral pose, plain background, consistent character design, Ghibli-inspired cinematic style, high detail"
+      let finalPrompt = '';
+      const turnaroundKeywords = "full body character turnaround sheet, front view, side view, back view, 3/4 view, neutral pose, plain background, consistent character design";
+      const locationKeywords = "wide angle, cinematic landscape, deep depth of field, no people, no characters, empty scenery, empty room, scenery only, high detail, masterpiece, Ghibli style watercolor";
+      const objectKeywords = "close up, highly detailed texture, isolated on simple background, no people, no characters, painterly Ghibli style";
 
       try {
-        const parsed = JSON.parse(enhancedPrompt);
-        // Merge turnaround into the JSON structure
-        if (parsed.STYLE) {
-          parsed.STYLE = `${parsed.STYLE}, ${turnaroundKeywords}`;
+        const parsed = JSON.parse(char.image_prompt || '{}');
+        const style = parsed.STYLE || '';
+        const desc = parsed.DESCRIPTION || char.name;
+
+        if (char.entity_type === 'character') {
+          finalPrompt = `${style}, ${desc}, ${turnaroundKeywords}, Ghibli-inspired cinematic style, high detail`;
+        } else if (char.entity_type === 'location') {
+          finalPrompt = `${style}, ${desc}, ${locationKeywords}`;
         } else {
-          parsed.keywords = turnaroundKeywords;
+          finalPrompt = `${style}, ${desc}, ${objectKeywords}`;
         }
-        enhancedPrompt = JSON.stringify(parsed);
       } catch (e) {
-        // Not JSON, just append as plain text
-        enhancedPrompt = `${enhancedPrompt}, ${turnaroundKeywords}`
+        // Fallback for non-JSON prompts
+        finalPrompt = char.image_prompt || char.name;
+        if (char.entity_type === 'character') finalPrompt += `, ${turnaroundKeywords}`;
       }
+
+      // Final safety trim (set to 2000 characters to support very long descriptive styles)
+      if (finalPrompt.length > 2000) {
+        finalPrompt = finalPrompt.substring(0, 2000);
+      }
+
+      console.log(`[GENERATE] Optimized prompt for ${char.name} (${finalPrompt.length} chars):`, finalPrompt);
 
       const genResult = await fetchAPI<any>('/api/flow/generate-image', {
         method: 'POST',
         body: JSON.stringify({
-          prompt: enhancedPrompt,
+          prompt: finalPrompt,
           project_id: project.id,
           aspect_ratio: 'IMAGE_ASPECT_RATIO_LANDSCAPE',
           user_paygate_tier: project.user_paygate_tier || 'PAYGATE_TIER_ONE'
@@ -564,9 +657,12 @@ function CharactersTab({ project, characters, loadCharacters, outputPath }: Char
                 Import TXT
                 <input type="file" accept=".txt,.json" className="hidden" onChange={handleImport} disabled={isAdding} />
               </label>
+              <button onClick={handleGenerateAllRefs} disabled={isAdding || !!generatingId || characters.length === 0} className="text-[10px] font-bold uppercase tracking-widest text-green-500 hover:text-green-400 transition-colors disabled:opacity-30">Generate All Refs</button>
+              <button onClick={handleClearAll} disabled={isAdding || !!generatingId || characters.length === 0} className="text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-red-400 transition-colors disabled:opacity-30">Clear All</button>
               <button onClick={handleRefresh} className="text-[10px] font-bold uppercase tracking-widest text-blue-500 hover:text-blue-400 transition-colors">Refresh URLs</button>
             </div>
           </div>
+
           <div className="grid grid-cols-1 gap-4">
             {characters.map(char => (
               <div key={char.id} className="flex flex-col gap-3 p-4 rounded-xl border group" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
@@ -686,7 +782,7 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
 
   const startBatch = async (onlyFailed = false) => {
     if (isGenerating || items.length === 0) return
-    setIsGenerating(true); setIsStopping(false); stopRef.current = false; const concurrency = 3;
+    setIsGenerating(true); setIsStopping(false); stopRef.current = false; const concurrency = 2;
     const queue = [...Array(items.length).keys()].filter(idx =>
       onlyFailed ? items[idx].status === 'FAILED' : items[idx].status !== 'COMPLETED'
     )
@@ -696,17 +792,24 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
   }
 
   const matchCharacters = (text: string) => {
-    // Look for names after characters section or just check all character names against the whole text
     const lowerText = text.toLowerCase();
-    const match = text.match(/CHARACTERS AND OBJECTS:\s*([^.\n]+)/i);
-    const namesInPrompt = match ? match[1].split(',').map(n => n.trim().toLowerCase()) : [];
-
+    
     return characters
       .filter(c => {
         if (!c.media_id) return false;
-        const charName = c.name.toLowerCase();
-        // Match if name is in the CHARACTERS section OR if the name explicitly appears in the prompt
-        return namesInPrompt.some(n => n.includes(charName) || charName.includes(n)) || lowerText.includes(charName);
+        
+        // Strip common prefixes to get the core name
+        const coreName = c.name
+          .replace(/^Hero Prop\s*-\s*/i, '')
+          .replace(/^Background\s*-\s*/i, '')
+          .replace(/^BG_\d+\s*[:.-]*\s*/i, '')
+          .trim()
+          .toLowerCase();
+
+        if (coreName.length < 3) return lowerText.includes(coreName);
+        
+        // Match if core name appears in the text
+        return lowerText.includes(coreName) || coreName.split(' ').every(word => lowerText.includes(word));
       })
       .map(c => c.media_id!);
   };
@@ -719,19 +822,56 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
           <div className="flex flex-col gap-1 ml-6"><label className="text-[10px] font-bold uppercase tracking-wider opacity-50">Output Directory</label><div className="flex gap-2"><input type="text" value={outputPath} onChange={e => setOutputPath(e.target.value)} className="w-80 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs outline-none" /><button onClick={() => { console.log('Browse Images clicked'); fetchAPI<any>('/api/batch-images/pick-dir').then(p => { console.log('Browse Images res:', p); if (p) setOutputPath(p.path); }) }} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-[10px] font-bold uppercase tracking-widest">Browse</button></div></div>
         </div>
         <div className="flex items-center gap-3">
-          <label className="px-3 py-1.5 rounded text-xs font-bold transition-all border border-white/10 hover:bg-white/5 cursor-pointer flex items-center gap-2">Import TXT<input type="file" accept=".txt" onChange={(e) => {
+          <label className="px-3 py-1.5 rounded text-xs font-bold transition-all border border-white/10 hover:bg-white/5 cursor-pointer flex items-center gap-2">Import Script TXT<input type="file" accept=".txt" onChange={async (e) => {
             const file = e.target.files?.[0]; if (!file) return;
-            const reader = new FileReader(); reader.onload = (re) => {
-              const content = re.target?.result as string; const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-              const newItems = lines.map((l, idx) => ({
-                id: Date.now() + idx,
-                text: l,
-                status: 'PENDING' as const,
-                videoStatus: 'PENDING' as const,
-                characterMediaIds: matchCharacters(l)
-              }));
-              setItems(prev => [...prev, ...newItems])
-            }; reader.readAsText(file)
+            const content = await file.text();
+            
+            // 1. Extract STYLE and TONE
+            const styleMatch = content.match(/STYLE:\s*([\s\S]*?)(?=\nTONE:|\nRENDERING RULES:|\nCHARACTERS AND OBJECTS|$)/i);
+            const style = styleMatch ? styleMatch[1].trim() : "";
+            
+            const toneMatch = content.match(/TONE:\s*([\s\S]*?)(?=\nSTYLE:|\nRENDERING RULES:|\nCHARACTERS AND OBJECTS|\nSCENE|$)/i);
+            const tone = toneMatch ? toneMatch[1].trim() : "";
+
+            // 2. Parse Scenes
+            const scenes: any[] = [];
+            const sceneRegex = /SCENE\s+(\d+):([\s\S]*?)(?=\nSCENE\s+\d+:|\n\[END|$)/g;
+            let match;
+            
+            while ((match = sceneRegex.exec(content)) !== null) {
+              const sceneNum = match[1];
+              const sceneBody = match[2];
+
+              const envMatch = sceneBody.match(/ENVIRONMENT\s*\(SCENE\):\s*([\s\S]*?)(?=\nIMAGE:|\nCAMERA:|\nDIALOGUE:|\nNOTES:|$)/i);
+              const imgMatch = sceneBody.match(/IMAGE:\s*([\s\S]*?)(?=\nENVIRONMENT:|\nCAMERA:|\nDIALOGUE:|\nNOTES:|$)/i);
+              const camMatch = sceneBody.match(/CAMERA:\s*([\s\S]*?)(?=\nENVIRONMENT:|\nIMAGE:|\nDIALOGUE:|\nNOTES:|$)/i);
+
+              const env = envMatch ? envMatch[1].trim().replace(/^-\s*/gm, '').split('\n').join(' ') : "";
+              const img = imgMatch ? imgMatch[1].trim().replace(/^-\s*/gm, '').split('\n').join(' ') : "";
+              const camFull = camMatch ? camMatch[1].trim() : "";
+              
+              // Extract Lens specifically
+              const lensMatch = camFull.match(/Lens:\s*([^\n,]+)/i);
+              const lens = lensMatch ? lensMatch[1].trim() : camFull;
+
+              const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE): ${env}\nIMAGE: ${img}\nCAMERA (Lens): ${lens}`;
+              
+              scenes.push({
+                id: Date.now() + parseInt(sceneNum),
+                text: fullPrompt,
+                status: 'PENDING',
+                videoStatus: 'PENDING',
+                characterMediaIds: matchCharacters(env + " " + img)
+              });
+            }
+
+            if (scenes.length > 0) {
+              setItems(prev => [...prev, ...scenes]);
+              alert(`Imported ${scenes.length} scenes with smart entity mapping.`);
+            } else {
+              alert("No scenes found. Check script format.");
+            }
+            e.target.value = '';
           }} className="hidden" /></label>
           <button onClick={() => { if (confirm('Clear?')) setItems([]) }} className="px-3 py-1.5 rounded text-xs font-bold border border-red-500/20 text-red-400 hover:bg-red-500/10">Clear</button>
           {isGenerating ? <button onClick={() => { stopRef.current = true; setIsStopping(true); }} className="px-6 py-1.5 rounded text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30">{isStopping ? 'Stopping...' : 'Stop'}</button> : (
