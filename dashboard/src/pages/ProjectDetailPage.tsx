@@ -848,10 +848,10 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
 
               const cleanText = (txt: string) => {
                 if (!txt) return "";
-                // Insert newline before keywords if they are mashed together
                 return txt.trim()
-                  .replace(/\s*(Location:|Scenery:|Atmosphere:|IMAGE:|ACTIONS:|CAMERA:|Lens:|ASMR:|VISUAL FX:)/g, '\n$1')
-                  .replace(/\n+/g, '\n')
+                  .replace(/^-\s*/gm, '') // Remove existing dashes at start of lines
+                  .replace(/\n+/g, ' ')   // Flatten to clean up existing line breaks
+                  .replace(/\s*(Location:|Scenery:|Atmosphere:|IMAGE:|ACTIONS:|CAMERA:|Lens:|ASMR:|VISUAL FX:)/gi, '\n- $1')
                   .trim();
               };
 
