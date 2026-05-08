@@ -833,6 +833,14 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
             const toneMatch = content.match(/TONE:\s*([\s\S]*?)(?=\n?STYLE:|\n?RENDERING RULES|\n?CHARACTERS AND OBJECTS|\n?SCENE|$)/i);
             const tone = toneMatch ? toneMatch[1].trim() : "";
 
+            // 1.1. Extract Global LOCKED Definitions
+            const lockedSectionMatch = content.match(/CHARACTERS AND OBJECTS \(LOCKED\):([\s\S]*?)(?=\nSCENE\s+\d+:|$)/i);
+            const lockedLines = lockedSectionMatch ? lockedSectionMatch[1].split('\n').map(l => l.trim()).filter(l => l.startsWith('-')) : [];
+            const lockedEntities = lockedLines.map(line => {
+              const namePart = line.split(':')[0].replace(/^-?\s*/, '').trim();
+              return { name: namePart, fullLine: line };
+            });
+
             // 2. Parse Scenes
             const scenes: any[] = [];
             const sceneRegex = /SCENE\s+(\d+):([\s\S]*?)(?=\nSCENE\s+\d+:|\n\[END|$)/g;
@@ -870,8 +878,20 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
                 lens = camFull.split('.')[0].replace(/Lens:\s*/i, '').replace(/^-\s*/, '').trim();
               }
 
-              // Final Prompt Construction (NO ACTIONS, NO RENDERING RULES)
-              const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE):\n${env}\nIMAGE:\n${img}\nCAMERA (Lens): ${lens}`;
+              // Filter relevant LOCKED entities for this scene
+              const sceneTextForMatching = (env + " " + img).toLowerCase();
+              const relevantLocked = lockedEntities
+                .filter(ent => {
+                  const core = ent.name.toLowerCase();
+                  return sceneTextForMatching.includes(core) || core.split(' ').some(word => word.length > 3 && sceneTextForMatching.includes(word));
+                })
+                .map(ent => ent.fullLine)
+                .join('\n');
+
+              const lockedDisplay = relevantLocked ? `CHARACTERS AND OBJECTS (LOCKED):\n${relevantLocked}\n` : "";
+
+              // Final Prompt Construction (No ACTIONS, selectively including relevant LOCKED)
+              const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\n${lockedDisplay}ENVIRONMENT (SCENE):\n${env}\nIMAGE:\n${img}\nCAMERA (Lens): ${lens}`;
               
               scenes.push({
                 id: Date.now() + parseInt(sceneNum),
