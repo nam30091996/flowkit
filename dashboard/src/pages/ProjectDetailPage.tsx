@@ -842,10 +842,10 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
               const sceneNum = match[1];
               const sceneBody = match[2];
 
-              const envMatch = sceneBody.match(/ENVIRONMENT\s*\(SCENE\):\s*([\s\S]*?)(?=\nIMAGE:|IMAGE:|\nACTIONS:|ACTIONS:|\nCAMERA:|CAMERA:|\nAUDIO:|\nDIALOGUE:|\nNOTES:|$)/i);
-              const imgMatch = sceneBody.match(/IMAGE:\s*([\s\S]*?)(?=\nACTIONS:|ACTIONS:|\nENVIRONMENT:|ENVIRONMENT:|\nCAMERA:|CAMERA:|\nAUDIO:|\nDIALOGUE:|\nNOTES:|$)/i);
-              const actMatch = sceneBody.match(/ACTIONS:\s*([\s\S]*?)(?=\nIMAGE:|IMAGE:|\nENVIRONMENT:|ENVIRONMENT:|\nCAMERA:|CAMERA:|\nAUDIO:|\nDIALOGUE:|\nNOTES:|$)/i);
-              const camMatch = sceneBody.match(/CAMERA:\s*([\s\S]*?)(?=\nENVIRONMENT:|ENVIRONMENT:|\nIMAGE:|IMAGE:|\nACTIONS:|ACTIONS:|\nAUDIO:|AUDIO:|\nDIALOGUE:|\nNOTES:|\nVISUAL FX:|VISUAL FX:|$)/i);
+              const envMatch = sceneBody.match(/(?:^|\n)-?\s*ENVIRONMENT\s*\(SCENE\):\s*([\s\S]*?)(?=\n-?\s*IMAGE:|-?\s*IMAGE:|\n-?\s*ACTIONS:|-?\s*ACTIONS:|\n-?\s*CAMERA:|-?\s*CAMERA:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
+              const imgMatch = sceneBody.match(/(?:^|\n)-?\s*IMAGE:\s*([\s\S]*?)(?=\n-?\s*ACTIONS:|-?\s*ACTIONS:|\n-?\s*ENVIRONMENT:|-?\s*ENVIRONMENT:|\n-?\s*CAMERA:|-?\s*CAMERA:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
+              const actMatch = sceneBody.match(/(?:^|\n)-?\s*ACTIONS:\s*([\s\S]*?)(?=\n-?\s*IMAGE:|-?\s*IMAGE:|\n-?\s*ENVIRONMENT:|-?\s*ENVIRONMENT:|\n-?\s*CAMERA:|-?\s*CAMERA:|\n-?\s*AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|$)/i);
+              const camMatch = sceneBody.match(/(?:^|\n)-?\s*CAMERA:\s*([\s\S]*?)(?=\n-?\s*ENVIRONMENT:|ENVIRONMENT:|\n-?\s*IMAGE:|IMAGE:|\n-?\s*ACTIONS:|ACTIONS:|\n-?\s*AUDIO:|AUDIO:|\n-?\s*DIALOGUE:|\n-?\s*NOTES:|\n-?\s*VISUAL FX:|VISUAL FX:|$)/i);
 
               const cleanText = (txt: string) => {
                 if (!txt) return "";
@@ -865,14 +865,14 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
               const lensMatch = camFull.match(/Lens:\s*([^\n,]+)/i);
               const lens = lensMatch ? lensMatch[1].trim() : camFull;
 
-              const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE):\n${env}\nIMAGE:\n${img}\nACTIONS:\n${act}\nCAMERA (Lens): ${lens}`;
+              const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE):\n${env}\nIMAGE:\n${img}\nCAMERA (Lens): ${lens}`;
               
               scenes.push({
                 id: Date.now() + parseInt(sceneNum),
                 text: fullPrompt,
                 status: 'PENDING',
                 videoStatus: 'PENDING',
-                characterMediaIds: matchCharacters(env + " " + img)
+                characterMediaIds: matchCharacters(env + " " + img + " " + act)
               });
             }
 
