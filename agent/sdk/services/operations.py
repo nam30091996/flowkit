@@ -96,10 +96,32 @@ def _extract_operations(result: dict) -> list[dict]:
     """Extract operations list from video gen / upscale submit response."""
     data = result.get("data", result)
     ops = data.get("operations", [])
+    
+    if not ops:
+        # New FX format (workflows/media)
+        # Priority 1: Use 'media' array items as operations (name = UUID)
+        media = data.get("media", [])
+        if media:
+            for m in media:
+                ops.append({
+                    "operation": {"name": m.get("name")},
+                    "status": m.get("mediaStatus", {}).get("mediaGenerationStatus", "MEDIA_GENERATION_STATUS_PENDING"),
+                    **m
+                })
+        # Priority 2: Use 'workflows' metadata primaryMediaId
+        elif data.get("workflows"):
+            for wf in data["workflows"]:
+                name = wf.get("metadata", {}).get("primaryMediaId") or wf.get("name")
+                ops.append({
+                    "operation": {"name": name},
+                    "status": wf.get("mediaStatus", {}).get("mediaGenerationStatus", "MEDIA_GENERATION_STATUS_PENDING"),
+                    **wf
+                })
+    
     for op in ops:
-        op_name = op.get("operation", {}).get("name")
+        op_name = op.get("operation", {}).get("name") or op.get("name")
         if not op_name:
-            logger.warning("Operation missing name: %s", op)
+            logger.warning("Operation/Workflow missing name: %s", op)
     return ops
 
 
@@ -126,7 +148,7 @@ async def _poll_operations(
             continue
 
         data = status_result.get("data", status_result)
-        ops = data.get("operations", [])
+        ops = data.get("operations", []) or data.get("workflows", [])
         if not ops:
             continue
 
@@ -136,11 +158,11 @@ async def _poll_operations(
         error_msg = ""
 
         for op in ops:
-            status = op.get("status", "")
+            status = op.get("status") or op.get("mediaStatus", {}).get("mediaGenerationStatus", "")
             if status == "MEDIA_GENERATION_STATUS_SUCCESSFUL":
                 continue
             elif status == "MEDIA_GENERATION_STATUS_FAILED":
-                op_name = op.get('operation', {}).get('name', '?')
+                op_name = op.get('operation', {}).get('name') or op.get('name', '?')
                 # Log full operation for debugging failure reason
                 import json as _json
                 logger.error("Operation FAILED: name=%s full=%s", op_name, _json.dumps(op)[:1000])
@@ -156,7 +178,7 @@ async def _poll_operations(
             logger.info("All %d operations completed after %ds", len(ops), elapsed)
             return {"data": data}
 
-        done_count = sum(1 for o in ops if o.get("status") == "MEDIA_GENERATION_STATUS_SUCCESSFUL")
+        done_count = sum(1 for o in ops if (o.get("status") or o.get("mediaStatus", {}).get("mediaGenerationStatus")) == "MEDIA_GENERATION_STATUS_SUCCESSFUL")
         logger.debug("Poll %ds/%ds: %d/%d done", elapsed, timeout, done_count, len(ops))
 
     return {"error": f"Polling timeout after {timeout}s"}

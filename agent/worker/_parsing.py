@@ -75,15 +75,29 @@ def _extract_media_id(result: dict, req_type: str) -> str:
                 uuid_val = _extract_uuid_from_url(fife)
                 if uuid_val:
                     return uuid_val
-            val = video_meta.get("mediaId", "")
-            if val and _is_uuid(val):
-                return val
             # Inline rawBytes format (upscale returns video data directly)
-            # Do NOT return mediaGenerationId — it's CAMS format, not UUID (Rule #1)
             if ops[0].get("rawBytes"):
                 logger.info("Inline rawBytes response, no UUID media_id available")
                 return None
-            return None
+        
+        # New FX format (workflows/media)
+        media = data.get("media", [])
+        if media:
+            name = media[0].get("name", "")
+            if name and _is_uuid(name):
+                return name
+            # Check nested video metadata if present
+            video_gen = media[0].get("video", {}).get("generatedVideo", {})
+            val = video_gen.get("mediaId", "")
+            if val and _is_uuid(val):
+                return val
+            fife = video_gen.get("fifeUrl", "")
+            if fife:
+                uuid_val = _extract_uuid_from_url(fife)
+                if uuid_val:
+                    return uuid_val
+
+        return None
 
     return None
 
@@ -107,5 +121,13 @@ def _extract_output_url(result: dict, req_type: str) -> str:
             # Inline rawBytes — no URL, check if saved locally
             if ops[0].get("rawBytes") or ops[0].get("mediaGenerationId"):
                 return ""  # URL will be set by _save_raw_bytes in operations.py
+        
+        # New FX format (workflows/media)
+        media = data.get("media", [])
+        if media:
+            gen = media[0].get("video", {}).get("generatedVideo", {})
+            url = gen.get("fifeUrl", gen.get("videoUri", ""))
+            if url:
+                return url
 
     return data.get("videoUri", data.get("imageUri", ""))

@@ -88,18 +88,21 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
           body: JSON.stringify({ operations: [{ operation: { name: opName } }] })
         });
 
-        // Google's batchCheck returns { operations: [ { done: true, ... } ] }
-        const opResult = statusRes?.operations?.[0] || (statusRes?.done !== undefined ? statusRes : null);
+        // Google's batchCheck returns { operations: [ { done: true, ... } ] } or { workflows: [ ... ] }
+        const opResult = statusRes?.operations?.[0] || statusRes?.workflows?.[0] || (statusRes?.done !== undefined ? statusRes : null);
 
         const isDone = opResult?.status === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' ||
           opResult?.status === 'MEDIA_GENERATION_STATUS_FAILED' ||
-          opResult?.done === true;
+          opResult?.done === true ||
+          opResult?.mediaStatus?.mediaGenerationStatus === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' ||
+          opResult?.mediaStatus?.mediaGenerationStatus === 'MEDIA_GENERATION_STATUS_FAILED';
 
         if (isDone) {
           console.log(`[VIDEO] Scene #${i + 1} Operation finished. Status: ${opResult?.status}. Result:`, opResult);
 
-          if (opResult.error || opResult.status === 'MEDIA_GENERATION_STATUS_FAILED') {
-            console.error(`[VIDEO] Google returned error for #${i + 1}:`, opResult.error);
+          if (opResult.error || opResult.status === 'MEDIA_GENERATION_STATUS_FAILED' || opResult.operation?.error) {
+            const errorObj = opResult.error || opResult.operation?.error;
+            console.error(`[VIDEO] Google returned error for #${i + 1}:`, errorObj?.message || errorObj || 'Unknown error');
             setItems(prev => prev.map((p, idx) => idx === i ? { ...p, videoStatus: 'FAILED' } : p));
             return;
           }
@@ -159,15 +162,17 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
           user_paygate_tier: project.user_paygate_tier || 'PAYGATE_TIER_ONE'
         })
       });
-      console.log(`[VIDEO] Gen request response for #${i + 1}:`, genResult);
       const root = genResult.data || genResult.result || genResult;
-      const opObj = Array.isArray(root) ? root[0] : (root.operations ? root.operations[0] : root);
-
-      // Extract the actual operation name correctly from nested structure
-      const opName = opObj?.operation?.name || opObj?.name;
+      
+      // Extract the actual operation name. 
+      // In newer FX APIs, the 'media' name (UUID) is the pollable operation name, NOT the workflow name.
+      const opName = root.operations?.[0]?.operation?.name || 
+                     root.media?.[0]?.name || 
+                     root.workflows?.[0]?.metadata?.primaryMediaId ||
+                     root.workflows?.[0]?.name;
 
       if (!opName) {
-        console.error(`[VIDEO] No operation name found for #${i + 1}:`, opObj);
+        console.error(`[VIDEO] No operation name found for #${i + 1}. Root:`, root);
         throw new Error("No operation name found");
       }
 
