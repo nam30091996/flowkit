@@ -1,0 +1,27 @@
+__pycache__/
+*.pyc
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+.env
+output/
+youtube
+agent/active_project.json
+
+# Generated AI tool configs
+.claude/commands/fk:*
+.gemini/commands/
+AGENTS.md
+GEMINI.md
+.fk-setup.json
+
+# Exclusions
+venv/
+node_modules/
+.gemini/
+.claude/
+flow_agent.db*
+.idea/
+.vscode/
+*.log

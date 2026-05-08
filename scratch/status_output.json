@@ -1,0 +1,12 @@
+[
+  {
+    "path": "d:\\Youtube\\Studio Thiên Vũ\\flowkit\\status_full.json",
+    "content": "﻿{\r\n    \"operations\":  [\r\n                       {\r\n                           \"operation\":  {\r\n                                             \"name\":  \"8a437781-2dad-4d14-a8a0-e0cd6a182f7f\",\r\n                                             \"metadata\":  {\r\n                                                              \"@type\":  \"type.googleapis.com/google.internal.labs.aisandbox.v1.Media\",\r\n                                                              \"name\":  \"CAUSJDQzMTE3MTE0LTE2MTItNGIzNi1hOTVhLTJhMmJmY2FhNzA5NBokNjJjMmQyZmYtMTE0OC00NjA0LTllNjAtM2NmYjNjYjQzNjZhIgNDQUUqJDhhNDM3NzgxLTJkYWQtNGQxNC1hOGEwLWUwY2Q2YTE4MmY3Zg\",\r\n                                                              \"video\":  {\r\n                                                                            \"seed\":  9191,\r\n                                                                            \"mediaGenerationId\":  \"CAUSJDQzMTE3MTE0LTE2MTItNGIzNi1hOTVhLTJhMmJmY2FhNzA5NBokNjJjMmQyZmYtMTE0OC00NjA0LTllNjAtM2NmYjNjYjQzNjZhIgND",
+    "encoding": "utf-16le"
+  },
+  {
+    "path": "d:\\Youtube\\Studio Thiên Vũ\\flowkit\\gen_resp.json",
+    "content": "﻿{\r\n    \"operations\":  [\r\n                       {\r\n                           \"operation\":  {\r\n                                             \"name\":  \"8a437781-2dad-4d14-a8a0-e0cd6a182f7f\"\r\n                                         },\r\n                           \"sceneId\":  \"e2e-final-scene-2\",\r\n                           \"status\":  \"MEDIA_GENERATION_STATUS_PENDING\"\r\n                       }\r\n                   ],\r\n    \"remainingCredits\":  44990,\r\n    \"workflows\":  [\r\n                      {\r\n                          \"name\":  \"3509afef-0184-4f54-9d05-aa17fb8e3996\",\r\n                          \"metadata\":  {\r\n                                           \"displayName\":  \"Camera drift rainy cyberpunk street\",\r\n                                           \"createTime\":  \"2026-05-07T04:46:33.760907Z\",\r\n                                           \"primaryMediaId\":  \"8a437781-2dad-4d14-a8a0-e0cd6a182f7f\",\r\n                                           \"batchId\":  \"ea1ac010-7173-4bd1-ad39-167ab837d72d\"",
+    "encoding": "utf-16le"
+  }
+]
