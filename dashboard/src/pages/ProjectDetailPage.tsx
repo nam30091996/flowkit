@@ -878,12 +878,15 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
                 lens = camFull.split('.')[0].replace(/Lens:\s*/i, '').replace(/^-\s*/, '').trim();
               }
 
-              // Filter relevant LOCKED entities for this scene
+              // Filter relevant LOCKED entities for this scene (stricter matching)
               const sceneTextForMatching = (env + " " + img).toLowerCase();
               const relevantLocked = lockedEntities
                 .filter(ent => {
-                  const core = ent.name.toLowerCase();
-                  return sceneTextForMatching.includes(core) || core.split(' ').some(word => word.length > 3 && sceneTextForMatching.includes(word));
+                  const fullLower = ent.name.toLowerCase();
+                  const firstName = fullLower.split(' ')[0];
+                  // Match full name OR first name (if first name is distinctive enough)
+                  return sceneTextForMatching.includes(fullLower) || 
+                         (firstName.length > 2 && sceneTextForMatching.includes(firstName));
                 })
                 .map(ent => ent.fullLine)
                 .join('\n');
