@@ -842,19 +842,28 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
               const sceneNum = match[1];
               const sceneBody = match[2];
 
-              const envMatch = sceneBody.match(/ENVIRONMENT\s*\(SCENE\):\s*([\s\S]*?)(?=\nIMAGE:|\nCAMERA:|\nDIALOGUE:|\nNOTES:|$)/i);
-              const imgMatch = sceneBody.match(/IMAGE:\s*([\s\S]*?)(?=\nENVIRONMENT:|\nCAMERA:|\nDIALOGUE:|\nNOTES:|$)/i);
-              const camMatch = sceneBody.match(/CAMERA:\s*([\s\S]*?)(?=\nENVIRONMENT:|\nIMAGE:|\nDIALOGUE:|\nNOTES:|$)/i);
+              const envMatch = sceneBody.match(/ENVIRONMENT\s*\(SCENE\):\s*([\s\S]*?)(?=\nIMAGE:|IMAGE:|\nCAMERA:|CAMERA:|\nDIALOGUE:|\nNOTES:|$)/i);
+              const imgMatch = sceneBody.match(/IMAGE:\s*([\s\S]*?)(?=\nENVIRONMENT:|ENVIRONMENT:|\nCAMERA:|CAMERA:|\nDIALOGUE:|\nNOTES:|$)/i);
+              const camMatch = sceneBody.match(/CAMERA:\s*([\s\S]*?)(?=\nENVIRONMENT:|ENVIRONMENT:|\nIMAGE:|IMAGE:|\nDIALOGUE:|\nNOTES:|$)/i);
 
-              const env = envMatch ? envMatch[1].trim().replace(/^-\s*/gm, '').split('\n').join(' ') : "";
-              const img = imgMatch ? imgMatch[1].trim().replace(/^-\s*/gm, '').split('\n').join(' ') : "";
-              const camFull = camMatch ? camMatch[1].trim() : "";
+              const cleanText = (txt: string) => {
+                if (!txt) return "";
+                // Insert newline before keywords if they are mashed together
+                return txt.trim()
+                  .replace(/\s*(Location:|Scenery:|Atmosphere:|IMAGE:|ACTIONS:|CAMERA:|Lens:|ASMR:|VISUAL FX:)/g, '\n$1')
+                  .replace(/\n+/g, '\n')
+                  .trim();
+              };
+
+              const env = envMatch ? cleanText(envMatch[1]) : "";
+              const img = imgMatch ? cleanText(imgMatch[1]) : "";
+              const camFull = camMatch ? cleanText(camMatch[1]) : "";
               
               // Extract Lens specifically
               const lensMatch = camFull.match(/Lens:\s*([^\n,]+)/i);
               const lens = lensMatch ? lensMatch[1].trim() : camFull;
 
-              const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE): ${env}\nIMAGE: ${img}\nCAMERA (Lens): ${lens}`;
+              const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE):\n${env}\nIMAGE:\n${img}\nCAMERA (Lens): ${lens}`;
               
               scenes.push({
                 id: Date.now() + parseInt(sceneNum),
@@ -900,7 +909,7 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
                 </div>
                 <StatusDot status={p.status} />
               </div>
-              <textarea value={p.text} onChange={e => setItems(prev => prev.map((item, idx) => idx === i ? { ...item, text: e.target.value } : item))} rows={2} className="w-full bg-transparent border-none resize-none outline-none p-0 text-[11px] leading-tight" style={{ color: 'var(--text)' }} />
+              <textarea value={p.text} onChange={e => setItems(prev => prev.map((item, idx) => idx === i ? { ...item, text: e.target.value } : item))} rows={8} className="w-full bg-transparent border-none resize-none outline-none p-0 text-[11px] leading-tight" style={{ color: 'var(--text)' }} />
             </div>
           ))}
         </div>
