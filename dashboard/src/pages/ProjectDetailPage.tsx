@@ -826,11 +826,11 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
             const file = e.target.files?.[0]; if (!file) return;
             const content = await file.text();
             
-            // 1. Extract STYLE and TONE
-            const styleMatch = content.match(/STYLE:\s*([\s\S]*?)(?=\nTONE:|\nRENDERING RULES:|\nCHARACTERS AND OBJECTS|$)/i);
+            // 1. Extract STYLE and TONE (Strictly exclude RENDERING RULES)
+            const styleMatch = content.match(/STYLE:\s*([\s\S]*?)(?=\n?TONE:|\n?RENDERING RULES:|\n?CHARACTERS AND OBJECTS|$)/i);
             const style = styleMatch ? styleMatch[1].trim() : "";
             
-            const toneMatch = content.match(/TONE:\s*([\s\S]*?)(?=\nSTYLE:|\nRENDERING RULES:|\nCHARACTERS AND OBJECTS|\nSCENE|$)/i);
+            const toneMatch = content.match(/TONE:\s*([\s\S]*?)(?=\n?STYLE:|\n?RENDERING RULES:|\n?CHARACTERS AND OBJECTS|\n?SCENE|$)/i);
             const tone = toneMatch ? toneMatch[1].trim() : "";
 
             // 2. Parse Scenes
