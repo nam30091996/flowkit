@@ -861,9 +861,9 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
               const act = actMatch ? cleanText(actMatch[1]) : "";
               const camFull = camMatch ? cleanText(camMatch[1]) : "";
               
-              // Extract Lens specifically
+              // CAMERA: Only keep the Lens info, discard Movement, Framing, Focus
               const lensMatch = camFull.match(/Lens:\s*([^\n,]+)/i);
-              const lens = lensMatch ? lensMatch[1].trim() : camFull;
+              const lens = lensMatch ? lensMatch[1].trim() : camFull.split('\n')[0].replace(/Lens:\s*/i, '').trim();
 
               const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE):\n${env}\nIMAGE:\n${img}\nCAMERA (Lens): ${lens}`;
               
