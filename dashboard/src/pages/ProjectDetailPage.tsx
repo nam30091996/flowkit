@@ -842,28 +842,30 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
               const sceneNum = match[1];
               const sceneBody = match[2];
 
-              const envMatch = sceneBody.match(/ENVIRONMENT\s*\(SCENE\):\s*([\s\S]*?)(?=\nIMAGE:|IMAGE:|\nCAMERA:|CAMERA:|\nDIALOGUE:|\nNOTES:|$)/i);
-              const imgMatch = sceneBody.match(/IMAGE:\s*([\s\S]*?)(?=\nENVIRONMENT:|ENVIRONMENT:|\nCAMERA:|CAMERA:|\nDIALOGUE:|\nNOTES:|$)/i);
-              const camMatch = sceneBody.match(/CAMERA:\s*([\s\S]*?)(?=\nENVIRONMENT:|ENVIRONMENT:|\nIMAGE:|IMAGE:|\nDIALOGUE:|\nNOTES:|$)/i);
+              const envMatch = sceneBody.match(/ENVIRONMENT\s*\(SCENE\):\s*([\s\S]*?)(?=\nIMAGE:|IMAGE:|\nACTIONS:|ACTIONS:|\nCAMERA:|CAMERA:|\nAUDIO:|\nDIALOGUE:|\nNOTES:|$)/i);
+              const imgMatch = sceneBody.match(/IMAGE:\s*([\s\S]*?)(?=\nACTIONS:|ACTIONS:|\nENVIRONMENT:|ENVIRONMENT:|\nCAMERA:|CAMERA:|\nAUDIO:|\nDIALOGUE:|\nNOTES:|$)/i);
+              const actMatch = sceneBody.match(/ACTIONS:\s*([\s\S]*?)(?=\nIMAGE:|IMAGE:|\nENVIRONMENT:|ENVIRONMENT:|\nCAMERA:|CAMERA:|\nAUDIO:|\nDIALOGUE:|\nNOTES:|$)/i);
+              const camMatch = sceneBody.match(/CAMERA:\s*([\s\S]*?)(?=\nENVIRONMENT:|ENVIRONMENT:|\nIMAGE:|IMAGE:|\nACTIONS:|ACTIONS:|\nAUDIO:|AUDIO:|\nDIALOGUE:|\nNOTES:|\nVISUAL FX:|VISUAL FX:|$)/i);
 
               const cleanText = (txt: string) => {
                 if (!txt) return "";
                 return txt.trim()
-                  .replace(/^-\s*/gm, '') // Remove existing dashes at start of lines
-                  .replace(/\n+/g, ' ')   // Flatten to clean up existing line breaks
+                  .replace(/^-\s*/gm, '')
+                  .replace(/\n+/g, ' ')
                   .replace(/\s*(Location:|Scenery:|Atmosphere:|IMAGE:|ACTIONS:|CAMERA:|Lens:|ASMR:|VISUAL FX:)/gi, '\n- $1')
                   .trim();
               };
 
               const env = envMatch ? cleanText(envMatch[1]) : "";
               const img = imgMatch ? cleanText(imgMatch[1]) : "";
+              const act = actMatch ? cleanText(actMatch[1]) : "";
               const camFull = camMatch ? cleanText(camMatch[1]) : "";
               
               // Extract Lens specifically
               const lensMatch = camFull.match(/Lens:\s*([^\n,]+)/i);
               const lens = lensMatch ? lensMatch[1].trim() : camFull;
 
-              const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE):\n${env}\nIMAGE:\n${img}\nCAMERA (Lens): ${lens}`;
+              const fullPrompt = `STYLE: ${style}\nTONE: ${tone}\nENVIRONMENT (SCENE):\n${env}\nIMAGE:\n${img}\nACTIONS:\n${act}\nCAMERA (Lens): ${lens}`;
               
               scenes.push({
                 id: Date.now() + parseInt(sceneNum),
