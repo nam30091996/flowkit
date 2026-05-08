@@ -14,6 +14,7 @@ interface BatchItem {
   videoUrl?: string
   videoText?: string
   characterMediaIds?: string[]
+  isUpscaling?: boolean
 }
 
 interface PersistedData {
@@ -30,6 +31,22 @@ const StatusDot = ({ status }: { status: string }) => (
   <div className={`w-1.5 h-1.5 rounded-full ${status === 'COMPLETED' ? 'bg-green-500' : status === 'PROCESSING' ? 'bg-blue-500 animate-pulse' : status === 'FAILED' ? 'bg-red-500' : 'bg-white/20'}`} />
 )
 
+const deepExtractMediaId = (obj: any): string | null => {
+  if (!obj || typeof obj !== 'object') return null;
+  if (obj.mediaId || obj.media_id) return obj.mediaId || obj.media_id;
+  if (typeof obj.name === 'string' && (obj.name.includes('/media/') || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(obj.name))) {
+    const parts = obj.name.split('/');
+    const last = parts[parts.length - 1];
+    if (last && last.length > 20) return last;
+    if (last && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(last)) return last;
+  }
+  for (const key in obj) {
+    const found = deepExtractMediaId(obj[key]);
+    if (found) return found;
+  }
+  return null;
+};
+
 // ---- Videos Tab ----
 interface VideosTabProps {
   project: Project
@@ -42,6 +59,15 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
   const [isGenerating, setIsGenerating] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(-1)
+  const [autoUpscale, setAutoUpscale] = useState(() => {
+    const saved = localStorage.getItem(`flowkit_upscale_${project.id}`);
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`flowkit_upscale_${project.id}`, autoUpscale.toString());
+  }, [autoUpscale, project.id]);
+
   const stopRef = useRef(false)
 
   const stats = {
@@ -75,6 +101,39 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
     }
     return null;
   };
+
+  const pollUpscaleStatus = async (i: number, opName: any) => {
+    let attempts = 0;
+    console.log(`[UPSCALE] Starting poll for scene #${i + 1}, op: ${opName}`);
+    while (attempts < 100 && !stopRef.current) {
+      try {
+        const statusRes = await fetchAPI<any>('/api/flow/check-status', {
+          method: 'POST',
+          body: JSON.stringify({ operations: [{ operation: { name: opName } }] })
+        });
+        const opResult = statusRes?.operations?.[0] || statusRes?.workflows?.[0] || (statusRes?.done !== undefined ? statusRes : null);
+        const isDone = opResult?.status === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' ||
+          opResult?.status === 'MEDIA_GENERATION_STATUS_FAILED' ||
+          opResult?.done === true ||
+          opResult?.mediaStatus?.mediaGenerationStatus === 'MEDIA_GENERATION_STATUS_SUCCESSFUL' ||
+          opResult?.mediaStatus?.mediaGenerationStatus === 'MEDIA_GENERATION_STATUS_FAILED';
+
+        if (isDone) {
+          if (opResult.error || opResult.status === 'MEDIA_GENERATION_STATUS_FAILED' || opResult.operation?.error) {
+            console.error(`[UPSCALE] Error for #${i + 1}:`, opResult.error || opResult.operation?.error);
+            return null;
+          }
+          const searchIn = opResult.response || opResult.result || opResult;
+          return findUrl(searchIn);
+        }
+      } catch (err) {
+        console.warn(`[UPSCALE] Poll hiccup for #${i + 1}:`, err);
+      }
+      attempts++;
+      await new Promise(r => setTimeout(r, 15000));
+    }
+    return null;
+  }
 
   const pollVideoStatus = async (i: number, opName: any) => {
     let attempts = 0;
@@ -110,11 +169,58 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
           // Try response, then result, then root
           const searchIn = opResult.response || opResult.result || opResult;
           const resultUrl = findUrl(searchIn, item.url);
+          const mediaId = deepExtractMediaId(searchIn);
 
-          if (resultUrl) {
-            console.log(`[VIDEO] SUCCESS! Final Video URL for #${i + 1}:`, resultUrl);
-            setItems(prev => prev.map((p, idx) => idx === i ? { ...p, videoStatus: 'COMPLETED', videoUrl: resultUrl } : p));
+          // Step 1.5: Optional Upscale to 1080p
+          if (resultUrl && mediaId && autoUpscale) {
+            console.log(`[VIDEO] SUCCESS! Video generated for #${i + 1}. MediaID: ${mediaId}. Starting 1080p Upscale...`);
+            setItems(prev => prev.map((p, idx) => idx === i ? { ...p, isUpscaling: true } : p));
+            
+            // Step 2: Start Upscale to 1080p
+            try {
+              const upscaleRes = await fetchAPI<any>('/api/flow/upscale-video', {
+                method: 'POST',
+                body: JSON.stringify({
+                  media_id: mediaId,
+                  scene_id: `upscale-${i + 1}-${Date.now()}`,
+                  aspect_ratio: 'VIDEO_ASPECT_RATIO_LANDSCAPE',
+                  resolution: 'VIDEO_RESOLUTION_1080P'
+                })
+              });
+              
+              const uRoot = upscaleRes.data || upscaleRes.result || upscaleRes;
+              const uOpName = uRoot.operations?.[0]?.operation?.name || uRoot.media?.[0]?.name || uRoot.name;
+              
+              if (uOpName) {
+                const finalUpscaledUrl = await pollUpscaleStatus(i, uOpName);
+                if (finalUpscaledUrl) {
+                  console.log(`[UPSCALE] SUCCESS! Final 1080p URL for #${i + 1}:`, finalUpscaledUrl);
+                  setItems(prev => prev.map((p, idx) => idx === i ? { ...p, videoStatus: 'COMPLETED', videoUrl: finalUpscaledUrl, isUpscaling: false } : p));
 
+                  if (videoOutputPath) {
+                    const fileName = `vid_${i + 1}.mp4`
+                    const fullPath = `${videoOutputPath}\\${fileName}`.replace(/\//g, '\\')
+                    try { await fetchAPI<any>('/api/batch-images/save', { method: 'POST', body: JSON.stringify({ url: finalUpscaledUrl, save_path: fullPath }) }) } catch (e) { console.error('[VIDEO] Save failed:', e) }
+                  }
+                  return;
+                }
+              }
+            } catch (uErr) {
+              console.error(`[UPSCALE] Failed for #${i + 1}, falling back to non-upscaled video:`, uErr);
+            }
+
+            // Fallback: Use the original non-upscaled video if upscale fails or isn't possible
+            setItems(prev => prev.map((p, idx) => idx === i ? { ...p, videoStatus: 'COMPLETED', videoUrl: resultUrl, isUpscaling: false } : p));
+            if (videoOutputPath) {
+              const fileName = `vid_${i + 1}.mp4`
+              const fullPath = `${videoOutputPath}\\${fileName}`.replace(/\//g, '\\')
+              try { await fetchAPI<any>('/api/batch-images/save', { method: 'POST', body: JSON.stringify({ url: resultUrl, save_path: fullPath }) }) } catch (e) { console.error('[VIDEO] Save failed:', e) }
+            }
+            return;
+          } else if (resultUrl) {
+            // Case where upscale is disabled OR no mediaId found
+            console.log(`[VIDEO] SUCCESS! Finishing video for #${i + 1} (Upscale: ${autoUpscale})`);
+            setItems(prev => prev.map((p, idx) => idx === i ? { ...p, videoStatus: 'COMPLETED', videoUrl: resultUrl, isUpscaling: false } : p));
             if (videoOutputPath) {
               const fileName = `vid_${i + 1}.mp4`
               const fullPath = `${videoOutputPath}\\${fileName}`.replace(/\//g, '\\')
@@ -126,10 +232,8 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
           }
         } else {
           console.log(`[VIDEO] Scene #${i + 1} still in progress (Attempt ${attempts})... Raw:`, statusRes);
-
         }
       } catch (err: any) {
-        // Network or bridge error - DON'T FAIL, just log and retry
         console.warn(`[VIDEO] Poll hiccup for #${i + 1} (will retry):`, err.message || err);
       }
       attempts++;
@@ -205,6 +309,13 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
         <div className="flex items-center gap-6">
           <div className="flex flex-col"><span className="text-[10px] font-bold uppercase tracking-wider opacity-50">Video Batch Status</span><div className="flex gap-4 mt-1"><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-sm font-bold">{stats.total} Total</span></div><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-green-500"></div><span className="text-sm font-bold">{stats.completed} Done</span></div><div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-sm font-bold">{stats.failed} Failed</span></div></div></div>
           <div className="flex flex-col gap-1 ml-6"><label className="text-[10px] font-bold uppercase tracking-wider opacity-50">Video Output Directory</label><div className="flex gap-2"><input type="text" value={videoOutputPath} onChange={e => setVideoOutputPath(e.target.value)} className="w-80 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs outline-none" /><button onClick={() => { console.log('Browse Video clicked'); fetchAPI<any>('/api/batch-images/pick-dir').then(p => { console.log('Browse Video res:', p); if (p) setVideoOutputPath(p.path); }) }} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-[10px] font-bold uppercase tracking-widest">Browse</button></div></div>
+          <div className="flex items-center gap-3 ml-6 pt-4">
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" checked={autoUpscale} onChange={e => setAutoUpscale(e.target.checked)} className="sr-only peer" />
+              <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              <span className="ml-3 text-[10px] font-bold uppercase tracking-wider opacity-50">Auto Upscale 1080p</span>
+            </label>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <label className="px-3 py-1.5 rounded text-xs font-bold transition-all border border-white/10 hover:bg-white/5 cursor-pointer flex items-center gap-2">Import Video TXT<input type="file" accept=".txt" className="hidden" onChange={(e) => {
@@ -247,7 +358,7 @@ function VideosTab({ project, items, setItems, videoOutputPath, setVideoOutputPa
                 {p.videoStatus === 'PROCESSING' && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
                     <div className="w-8 h-8 border-4 border-white/20 border-t-white rounded-full animate-spin mb-2"></div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest animate-pulse">Rendering...</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest animate-pulse">{p.isUpscaling ? 'Upscaling...' : 'Rendering...'}</span>
                   </div>
                 )}
               </div>
@@ -345,18 +456,6 @@ function CharactersTab({ project, characters, loadCharacters, outputPath }: Char
   const handleRefresh = async () => {
     if (loading || generatingId) return
     setLoading(true)
-    for (const char of characters) {
-      if (char.media_id) {
-        try {
-          const res = await fetchAPI<any>(`/api/flow/media/${char.media_id}?project_id=${project.id}`)
-          const findUrl = (obj: any): string | null => { if (!obj || typeof obj !== 'object') return null; if (obj.fifeUrl || obj.servingUri || obj.url || obj.contentUrl) return obj.fifeUrl || obj.servingUri || obj.url || obj.contentUrl; for (const key in obj) { const found = findUrl(obj[key]); if (found) return found; } return null; };
-          const imageUrl = findUrl(res);
-          if (imageUrl) {
-            await fetchAPI(`/api/characters/${char.id}`, { method: 'PATCH', body: JSON.stringify({ reference_image_url: imageUrl }) })
-          }
-        } catch (e) { }
-      }
-    }
     await loadCharacters()
   }
 
@@ -393,21 +492,6 @@ function CharactersTab({ project, characters, loadCharacters, outputPath }: Char
 
       const findUrl = (obj: any): string | null => { if (!obj || typeof obj !== 'object') return null; if (obj.fifeUrl || obj.servingUri || obj.url || obj.contentUrl) return obj.fifeUrl || obj.servingUri || obj.url || obj.contentUrl; for (const key in obj) { const found = findUrl(obj[key]); if (found) return found; } return null; };
       const imageUrl = findUrl(genResult);
-
-      const deepExtractMediaId = (obj: any): string | null => {
-        if (!obj || typeof obj !== 'object') return null;
-        if (obj.mediaId || obj.media_id) return obj.mediaId || obj.media_id;
-        if (typeof obj.name === 'string' && obj.name.includes('/media/')) {
-          const parts = obj.name.split('/');
-          const last = parts[parts.length - 1];
-          if (last && last.length > 20) return last;
-        }
-        for (const key in obj) {
-          const found = deepExtractMediaId(obj[key]);
-          if (found) return found;
-        }
-        return null;
-      };
 
       const rawMediaId = deepExtractMediaId(genResult);
       const mediaId = (rawMediaId as string)?.split(':').pop()?.split('/').pop() || (rawMediaId as string) || '';
@@ -543,21 +627,6 @@ function ImagesTab({ project, items, setItems, outputPath, setOutputPath, charac
     }
     for (const key in obj) {
       const found = findUrl(obj[key], excludeUrl);
-      if (found) return found;
-    }
-    return null;
-  };
-
-  const deepExtractMediaId = (obj: any): string | null => {
-    if (!obj || typeof obj !== 'object') return null;
-    if (obj.mediaId || obj.media_id) return obj.mediaId || obj.media_id;
-    if (typeof obj.name === 'string' && obj.name.includes('/media/')) {
-      const parts = obj.name.split('/');
-      const last = parts[parts.length - 1];
-      if (last && last.length > 20) return last;
-    }
-    for (const key in obj) {
-      const found = deepExtractMediaId(obj[key]);
       if (found) return found;
     }
     return null;

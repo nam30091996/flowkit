@@ -298,7 +298,7 @@ class FlowClient:
             "seed": ts % 1000000,
             "structuredPrompt": {"parts": [{"text": prompt}]},
             "imageAspectRatio": aspect_ratio,
-            "imageModelName": IMAGE_MODELS["NANO_BANANA_PRO"],
+            "imageModelName": IMAGE_MODELS.get(self.config.get("IMAGE_MODEL", IMAGE_MODEL), IMAGE_MODELS["NANO_BANANA_2"]),
         }
 
         # Add character references if provided (edit_image flow)

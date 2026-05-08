@@ -38,6 +38,7 @@ with open(_MODELS_FILE) as _f:
 VIDEO_MODELS = _MODELS["video_models"]
 UPSCALE_MODELS = _MODELS["upscale_models"]
 IMAGE_MODELS = _MODELS["image_models"]
+IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "NANO_BANANA_2")  # Default to Nano 2 for speed
 
 # ─── API Endpoints ───────────────────────────────────────────
 ENDPOINTS = {
